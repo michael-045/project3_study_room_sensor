@@ -1,0 +1,5 @@
+#!/bin/bash
+
+kill -9 $(sudo netstat -tulnp | grep :5000 | awk '{print $7}' | tr -dc '0-9' | sed 's/.$//')
+
+

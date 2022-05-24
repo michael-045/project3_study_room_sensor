@@ -1,0 +1,292 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>StudyRoom Monitor</title>
+
+    <style>
+      .buttons {
+        display: flex;
+        justify-content: space-between;
+        min-width:10em;
+        box-shadow: 0 0 5px;
+        margin-left:2em;
+        margin-bottom:2em;
+        border-radius:0.25em;
+      }
+      .table_scroll {
+        overflow-y: auto;
+        height: 100px;
+        width: 950px;
+      }
+      .table_scroll thead th {
+        position: sticky;
+        top: 0;
+        background-color: AliceBlue;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"
+            integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg=="
+            crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"
+            integrity="sha512-aMGMvNYu8Ue4G+fHa359jcPb1u+ytAF+P2SCb+PxrjCdO3n3ZTxJ30zuH39rimUggmTwmh2u7wvQsDTHESnmfQ=="
+            crossorigin="anonymous"></script>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function() {
+
+            var socket = io.connect();
+
+            // graph update
+            socket.on('graph_update', function(msg, cb) {
+                //console.log("inside graph update");
+                //console.log(msg.image);
+                $("#graph" + String(msg.sensor_num)).attr("src", "data:image/png;base64," + msg.image);
+                if (cb)
+                    cb();
+            });
+
+            // on graphButtonClass click
+            $('input.graphButtonClass').each(function() {
+                $(this).click(function() {
+                    console.log("reached button press");
+                    var classes = $(this).attr('class');  // even if multiple classes, just 1 long string
+                    console.log('button pressed was X ' + classes);
+                    socket.emit('button_pressed', classes);
+                });
+            });
+
+            //ping. first block is setting interval at 1sec client side to send ping, second part is pong
+            var ping_pong_times = [];
+            var start_time;
+            window.setInterval(function() {
+                start_time = (new Date).getTime();
+                $('#transport').text(socket.io.engine.transport.name);
+                socket.emit('my_ping');
+            }, 1000);
+            socket.on('my_pong', function() {
+                var latency = (new Date).getTime() - start_time;
+                ping_pong_times.push(latency);
+                ping_pong_times = ping_pong_times.slice(-30); // keep last 30 samples
+                var sum = 0;
+                for (var i = 0; i < ping_pong_times.length; i++)
+                    sum += ping_pong_times[i];
+                $('#info2').text(Math.round(10 * sum / ping_pong_times.length) / 10);
+            });
+
+            //build tables and graphs at new connection
+            socket.on('js_build_multi', function(msg, cb) {
+                console.log("inside js_build_multi");
+                const num = msg.total_sensors;
+
+                // update number of sensor header
+                $("#info1").text(num);
+
+                // create new room section
+                for(let i = 2; i < num+1; i++) {
+
+                    // create room header
+                    console.log("inside room header");
+                    const newHeader = Object.assign(
+                        document.createElement('h2'), {
+                            id: 'room' + i,
+                            innerHTML: 'Room ' + i});
+                    document.body.appendChild(newHeader);
+
+                    const newScrollTableDiv = Object.assign(
+                        document.createElement('div'), {
+                            style: 'overflow-y: auto;\
+                                height: 100px;\
+                                width: 950px;'});
+
+                    // create table insertadjacent the scroll div
+                    newScrollTableDiv.insertAdjacentElement('beforeend',
+                        Object.assign(document.createElement('table'), {
+                        id: 'myTable' + i,
+                        innerHTML: '\
+                            <thead style="position: sticky; top: 0; background-color: AliceBlue;">\
+                                <tr>\
+                                    <th>ID</th>\
+                                    <th>Temperature</th>\
+                                    <th>Humidity</th>\
+                                    <th>Light</th>\
+                                    <th>On or Off</th>\
+                                    <th>MAC</th>\
+                                    <th>Timestamp</th>\
+                                </tr>\
+                            </thead>\
+                            <tbody>\
+                                <tr>\
+                                    <td></td>\
+                                    <td></td>\
+                                    <td></td>\
+                                    <td></td>\
+                                    <td></td>\
+                                    <td></td>\
+                                    <td></td>\
+                                </tr>\
+                            </tbody>'}));
+                    document.body.appendChild(newScrollTableDiv);
+
+                    // create graph div
+                    const newGraphDiv = Object.assign(
+                        document.createElement('div'));
+
+                    // create img using insertAdjacentElement
+                    newGraphDiv.insertAdjacentElement('beforeend',
+                        Object.assign(document.createElement('img'), {
+                            id: 'graph' + i,
+                            src: 'empty.jpg',
+                            alt: 'empty.jpg',
+                            width: '640',
+                            height: '480'}));
+
+                    // create button div later will insertAdjacentElement
+                    const newButtonDiv = Object.assign(
+                        document.createElement('div'), {
+                            class: 'buttons',
+                            style: 'width:250px;\
+                                display: flex;\
+                                justify-content: space-between;\
+                                min-width:10em;\
+                                box-shadow: 0 0 5px;\
+                                margin-left:2em;\
+                                margin-bottom:2em;\
+                                border-radius:0.25em;'});
+
+                    // create tempBtn insert into newButton div
+                    var tempBtn = Object.assign(
+                        document.createElement('input'), {
+                            type: 'button',
+                            value: 'Temperature'});
+                    tempBtn.className = 'graphButtonClass s' + i + ' tempBtn';
+                    tempBtn.onclick = function() {graphButtonClicked(tempBtn)};
+
+                    newButtonDiv.insertAdjacentElement('beforeend',
+                        Object.assign(tempBtn));
+
+                    // create humiBtn insert into newButton div
+                    var humiBtn = Object.assign(
+                        document.createElement('input'), {
+                            type: 'button',
+                            value: 'Humidity'});
+                    humiBtn.className = 'graphButtonClass s' + i + ' humiBtn';
+                    humiBtn.onclick = function() {graphButtonClicked(humiBtn)};
+
+                    newButtonDiv.insertAdjacentElement('beforeend',
+                        Object.assign(humiBtn));
+
+                    // create lighBtn insert into newButton div
+                    var lighBtn = Object.assign(
+                        document.createElement('input'), {
+                            type: 'button',
+                            value: 'Light'});
+                    lighBtn.className = 'graphButtonClass s' + i + ' lighBtn';
+                    lighBtn.onclick = function() {graphButtonClicked(lighBtn)};
+
+                    newButtonDiv.insertAdjacentElement('beforeend',
+                        Object.assign(lighBtn));
+
+                    // insert button div into newGraphDiv
+                    newGraphDiv.insertAdjacentElement('beforeend',
+                        Object.assign(newButtonDiv));
+
+                    document.body.appendChild(newGraphDiv);
+                }
+
+                if (cb)
+                    cb();
+            });
+
+            //table update
+            socket.on('table_update', function(msg, cb) {
+                //console.log("UPDATE TABLE");
+                var table1 = document.getElementById("myTable" + msg.sensor_num).tBodies[0]
+                var newRow = document.createElement("tr");
+
+                var newCell1 = document.createElement("td");
+                var newCell2 = document.createElement("td");
+                var newCell3 = document.createElement("td");
+                var newCell4 = document.createElement("td");
+                var newCell5 = document.createElement("td");
+                var newCell6 = document.createElement("td");
+                var newCell7 = document.createElement("td");
+
+                newCell1.innerHTML = msg.id;
+                newCell2.innerHTML = msg.temp;
+                newCell3.innerHTML = msg.humi;
+                newCell4.innerHTML = msg.ligh;
+                newCell5.innerHTML = msg.onoff;
+                newCell6.innerHTML = msg.mac;
+                newCell7.innerHTML = msg.time;
+
+                newRow.append(newCell1);
+                newRow.append(newCell2);
+                newRow.append(newCell3);
+                newRow.append(newCell4);
+                newRow.append(newCell5);
+                newRow.append(newCell6);
+                newRow.append(newCell7);
+
+                table1.prepend(newRow);
+            });
+
+        });
+    </script>
+</head>
+
+<body>
+<div class="pageHeader">
+    <h1 class="titleHeader">
+        StudyRoom Monitor
+    </h1>
+    <p class="infoHeader">
+      Number of Sensors: <b><span id="info1"></span></b><br>
+      Ping: <b><span id="info2"></span></b>ms<br>
+    </p>
+</div>
+
+<div>
+    <h2><span id="room1">Room 1</span></h2>
+    <div class="table_scroll" >
+        <table id="myTable1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>Light</th>
+                    <th>On or Off</th>
+                    <th>mac</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+    <div>
+        <img id= "graph1"
+             src="empty.jpg"
+             alt="empty.jpg"
+             width="640"
+             height="480">
+        <div class="buttons" style="width:250px">
+            <input type="button"
+                   value="Temperature"
+                   class="graphButtonClass s1 tempBtn"/>
+            <input type="button"
+                   value="Humidity"
+                   class="graphButtonClass s1 humiBtn"/>
+            <input type="button"
+                   value="Light"
+                   class="graphButtonClass s1 lighBtn"/>
+        </div>
+    </div>
+</div>
+</body>
+</html>
